@@ -13,13 +13,13 @@
  * limitations under the License.
 */
 
-using System;
 using MathNet.Numerics.RootFinding;
 using Python.Runtime;
 using QuantConnect.Data;
 using QuantConnect.Logging;
 using QuantConnect.Python;
 using QuantConnect.Util;
+using System;
 
 namespace QuantConnect.Indicators
 {
@@ -30,6 +30,11 @@ namespace QuantConnect.Indicators
     {
         private decimal _impliedVolatility;
         private Func<decimal, decimal, decimal> SmoothingFunction;
+
+        /// <summary>
+        /// Gets the theoretical option price
+        /// </summary>
+        public IndicatorBase<IndicatorDataPoint> TheoreticalPrice { get; }
 
         /// <summary>
         /// Initializes a new instance of the ImpliedVolatility class
@@ -63,6 +68,31 @@ namespace QuantConnect.Indicators
                     return impliedVol;
                 };
             }
+
+            TheoreticalPrice = new FunctionalIndicator<IndicatorDataPoint>($"{name}_TheoreticalPrice", 
+                (iv) =>
+                {
+                    // Volatility is zero, price is not changing, can return current theoretical price.
+                    // This also allows us avoid errors in calculation when IV is zero.
+                    if (iv.Value == 0m)
+                    {
+                        return TheoreticalPrice.Current.Value;
+                    }
+
+                    var theoreticalPrice = CalculateTheoreticalPrice((double)iv.Value, (double)UnderlyingPrice.Current.Value, (double)Strike,
+                        OptionGreekIndicatorsHelper.TimeTillExpiry(Expiry, iv.EndTime), (double)RiskFreeRate.Current.Value, (double)DividendYield.Current.Value, 
+                        Right, optionModel);
+                    try
+                    {
+                        return Convert.ToDecimal(theoreticalPrice);
+                    }
+                    catch (OverflowException)
+                    {
+                        return TheoreticalPrice.Current.Value;
+                    }
+                },
+                _ => IsReady)
+                .Of(this);
         }
 
         /// <summary>
@@ -220,60 +250,34 @@ namespace QuantConnect.Indicators
             SmoothingFunction = PythonUtil.ToFunc<decimal, decimal, decimal>(function);
         }
 
-        private bool _isReady => Price.Current.Time == UnderlyingPrice.Current.Time && Price.IsReady && UnderlyingPrice.IsReady;
-
-        /// <summary>
-        /// Gets a flag indicating when this indicator is ready and fully initialized
-        /// </summary>
-        public override bool IsReady => UseMirrorContract ? _isReady && Price.Current.Time == OppositePrice.Current.Time && OppositePrice.IsReady : _isReady;
-
         /// <summary>
         /// Computes the next value
         /// </summary>
-        /// <param name="input">The input given to the indicator</param>
         /// <returns>The input is returned unmodified.</returns>
-        protected override decimal Calculate(IndicatorDataPoint input)
+        protected override decimal ComputeIndicator()
         {
-            if (input.Symbol == OptionSymbol)
-            {
-                Price.Update(input.EndTime, input.Price);
-            }
-            else if (input.Symbol == _oppositeOptionSymbol)
-            {
-                OppositePrice.Update(input.EndTime, input.Price);
-            }
-            else if (input.Symbol == _underlyingSymbol)
-            {
-                UnderlyingPrice.Update(input.EndTime, input.Price);
-            }
-            else
-            {
-                throw new ArgumentException("The given symbol was not target or reference symbol");
-            }
+            var time = Price.Current.EndTime;
 
-            var time = Price.Current.Time;
-            if (_isReady)
-            {
-                if (UseMirrorContract)
-                {
-                    if (time != OppositePrice.Current.Time)
-                    {
-                        return _impliedVolatility;
-                    }
-                }
+            RiskFreeRate.Update(time, _riskFreeInterestRateModel.GetInterestRate(time));
+            DividendYield.Update(time, _dividendYieldModel.GetDividendYield(time, UnderlyingPrice.Current.Value));
 
-                RiskFreeRate.Update(time, _riskFreeInterestRateModel.GetInterestRate(time));
-                DividendYield.Update(time, _dividendYieldModel.GetDividendYield(time, UnderlyingPrice.Current.Value));
-
-                var timeTillExpiry = Convert.ToDecimal(OptionGreekIndicatorsHelper.TimeTillExpiry(Expiry, time));
-                _impliedVolatility = CalculateIV(timeTillExpiry);
-            }
+            var timeTillExpiry = Convert.ToDecimal(OptionGreekIndicatorsHelper.TimeTillExpiry(Expiry, time));
+            _impliedVolatility = CalculateIV(timeTillExpiry);
 
             return _impliedVolatility;
         }
 
+        /// <summary>
+        /// Resets this indicator and all sub-indicators
+        /// </summary>
+        public override void Reset()
+        {
+            TheoreticalPrice.Reset();
+            base.Reset();
+        }
+
         // Calculate the theoretical option price
-        private double TheoreticalPrice(double volatility, double spotPrice, double strikePrice, double timeTillExpiry, double riskFreeRate,
+        private static double CalculateTheoreticalPrice(double volatility, double spotPrice, double strikePrice, double timeTillExpiry, double riskFreeRate,
             double dividendYield, OptionRight optionType, OptionPricingModelType? optionModel = null)
         {
             if (timeTillExpiry <= 0)
@@ -337,7 +341,7 @@ namespace QuantConnect.Indicators
             decimal? impliedVol = null;
             try
             {
-                Func<double, double> f = (vol) => TheoreticalPrice(vol, underlyingPrice, strike, timeTillExpiry, riskFreeRate, dividendYield, right, optionModel) - optionPrice;
+                Func<double, double> f = (vol) => CalculateTheoreticalPrice(vol, underlyingPrice, strike, timeTillExpiry, riskFreeRate, dividendYield, right, optionModel) - optionPrice;
                 impliedVol = Convert.ToDecimal(Brent.FindRoot(f, lowerBound, upperBound, accuracy, 100));
             }
             catch
@@ -349,7 +353,7 @@ namespace QuantConnect.Indicators
         }
 
         private void GetRootFindingMethodParameters(Symbol optionSymbol, double strike, double timeTillExpiry, double optionPrice,
-            double underlyingPrice, double riskFreeRate,  double dividendYield, OptionPricingModelType optionModel,
+            double underlyingPrice, double riskFreeRate, double dividendYield, OptionPricingModelType optionModel,
             out double accuracy, out double lowerBound, out double upperBound)
         {
             // Set the accuracy as a factor of the option price when possible

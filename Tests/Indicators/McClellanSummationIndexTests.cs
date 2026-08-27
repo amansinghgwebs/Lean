@@ -29,10 +29,21 @@ namespace QuantConnect.Tests.Indicators
         protected override IndicatorBase<TradeBar> CreateIndicator()
         {
             var mcClellanOscillator = new McClellanSummationIndex(19, 39);
-            mcClellanOscillator.Add(Symbols.MSFT);
-            mcClellanOscillator.Add(Symbols.GOOG);
-            mcClellanOscillator.Add(Symbols.AAPL);
+            if (SymbolList.Count > 2)
+            {
+                SymbolList.Take(3).ToList().ForEach(mcClellanOscillator.Add);
+            }
+            else
+            {
+                mcClellanOscillator.Add(Symbols.MSFT);
+                mcClellanOscillator.Add(Symbols.GOOG);
+                mcClellanOscillator.Add(Symbols.AAPL);
+            }
             return mcClellanOscillator;
+        }
+        protected override List<Symbol> GetSymbols()
+        {
+            return [Symbols.SPY, Symbols.AAPL, Symbols.IBM];
         }
 
         [Test]
@@ -46,11 +57,12 @@ namespace QuantConnect.Tests.Indicators
                 indicator.Update(new TradeBar() { Symbol = Symbols.AAPL, Close = i, Volume = 1, Time = reference.AddMinutes(i) });
                 indicator.Update(new TradeBar() { Symbol = Symbols.MSFT, Close = i, Volume = 1, Time = reference.AddMinutes(i) });
                 indicator.Update(new TradeBar() { Symbol = Symbols.GOOG, Close = i, Volume = 1, Time = reference.AddMinutes(i) });
+
+                Assert.AreEqual(i == indicator.WarmUpPeriod, indicator.IsReady);
             }
 
             Assert.AreEqual(60m, indicator.Current.Value);
             Assert.AreEqual(indicator.WarmUpPeriod * 3, indicator.Samples);
-            Assert.IsTrue(indicator.IsReady);
         }
 
         [Test]
@@ -139,12 +151,7 @@ namespace QuantConnect.Tests.Indicators
                 Add(symbol);
             }
 
-            // Set to the first EMA values to account for past A/D Difference values that we don't have access
             Reset();
-            Summation.Time = new DateTime(2022, 6, 30);
-            Summation.Value = -606.25m;
-            McClellanOscillator.EMAFast.Update(new DateTime(2022, 6, 30), -209.85m);
-            McClellanOscillator.EMASlow.Update(new DateTime(2022, 6, 30), -186.41m);
         }
 
         public void TestUpdate(IndicatorDataPoint input)
@@ -179,6 +186,12 @@ namespace QuantConnect.Tests.Indicators
             {
                 _symbols[symbol] = 0m;
             }
+
+            // Set to the first EMA values to account for past A/D Difference values that we don't have access
+            Summation.Time = new DateTime(2022, 6, 30);
+            Summation.Value = -606.25m;
+            McClellanOscillator.EMAFast.Update(new DateTime(2022, 6, 30), -209.85m);
+            McClellanOscillator.EMASlow.Update(new DateTime(2022, 6, 30), -186.41m);
         }
     }
 }

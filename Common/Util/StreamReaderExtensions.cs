@@ -156,6 +156,37 @@ namespace QuantConnect.Util
             return isNegative ? result * -1 : result;
         }
 
+        /// <summary>
+        /// Gets an integer from a stream reader
+        /// </summary>
+        /// <param name="stream">The data stream</param>
+        /// <param name="delimiter">The data delimiter character to use, default is ','</param>
+        /// <returns>The integer instance read</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long GetInt64(this StreamReader stream, char delimiter = DefaultDelimiter)
+        {
+            var result = 0L;
+            var current = (char)stream.Read();
+
+            while (current == ' ')
+            {
+                current = (char)stream.Read();
+            }
+
+            var isNegative = current == '-';
+            if (isNegative)
+            {
+                current = (char)stream.Read();
+            }
+
+            while (!(current == delimiter || current == '\n' || current == '\r' && (stream.Peek() != '\n' || stream.Read() == '\n') || current == NoMoreData || current == ' '))
+            {
+                result = (current - '0') + result * 10L;
+                current = (char)stream.Read();
+            }
+            return isNegative ? result * -1L : result;
+        }
+
         private readonly static ConcurrentBag<StringBuilder> StringBuilders = new();
 
         /// <summary>
@@ -188,6 +219,32 @@ namespace QuantConnect.Util
                 builder.Clear();
                 StringBuilders.Add(builder);
             }
+        }
+
+        /// <summary>
+        /// Gets a character from a stream reader
+        /// </summary>
+        /// <param name="stream">The data stream</param>
+        /// <param name="delimiter">The data delimiter character to use, default is ','</param>
+        /// <returns>The string instance read</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static char GetChar(this StreamReader stream, char delimiter = DefaultDelimiter)
+        {
+            var current = (char)stream.Read();
+            var next = (char)stream.Peek();
+
+            if (current == delimiter || current == '\n' || current == '\r' && (next != '\n' || stream.Read() == '\n') || current == NoMoreData)
+            {
+                return '\0';
+            }
+
+            if (next == delimiter || next == '\n' || next == '\r' && stream.Read() == '\r' && stream.Peek() == '\n' || next == NoMoreData)
+            {
+                // Consume the delimiter
+                stream.Read();
+            }
+
+            return current;
         }
     }
 }

@@ -43,8 +43,15 @@ namespace QuantConnect.Orders.Fees
             {
                 { Market.USA, UnitedStatesFutureFees },
                 { Market.HKFE, HongKongFutureFees },
-                { Market.EUREX, EUREXFutureFees }
+                { Market.EUREX, EUREXFutureFees },
+                { Market.KRX, KoreaFutureFees }
             };
+
+        /// <summary>
+        /// Korea Exchange futures are charged a flat rate of the trade value, which already includes
+        /// the exchange, regulatory, clearing and carrying fees.
+        /// </summary>
+        private const decimal _koreaFutureFeeRate = 0.00004m;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ImmediateFillModel"/>
@@ -378,6 +385,16 @@ namespace QuantConnect.Orders.Fees
             return new CashAmount(ibFeePerContract * 1.5m, security.QuoteCurrency.Symbol);
         }
 
+        /// <summary>
+        /// Gets the fee for a single Korea Exchange future contract, a percentage of its trade value
+        /// in the contract quote currency
+        /// </summary>
+        private static CashAmount KoreaFutureFees(Security security)
+        {
+            var tradeValuePerContract = security.Price * security.SymbolProperties.ContractMultiplier;
+            return new CashAmount(_koreaFutureFeeRate * tradeValuePerContract, security.QuoteCurrency.Symbol);
+        }
+
         private static CashAmount EUREXFutureFees(Security security)
         {
             IDictionary<string, decimal> fees, exchangeFees;
@@ -418,7 +435,7 @@ namespace QuantConnect.Orders.Fees
             { "MYM", 0.25m }, { "M2K", 0.25m }, { "MES", 0.25m }, { "MNQ", 0.25m }, { "2YY", 0.25m }, { "5YY", 0.25m }, { "10Y", 0.25m },
             { "30Y", 0.25m }, { "MCL", 0.25m }, { "MGC", 0.25m }, { "SIL", 0.25m },
             // Cryptocurrency Futures
-            { "BTC", 5m }, { "MBT", 2.25m }, { "ETH", 3m }, { "MET", 0.20m },
+            { "BTC", 5m }, { "MBT", 2.25m }, { "ETH", 3m }, { "MET", 0.20m }, { "MIB", 2.25m }, { "MRB", 0.20m },
             // E-mini FX (currencies) Futures
             { "E7", 0.50m }, { "J7", 0.50m },
             // Micro E-mini FX (currencies) Futures
@@ -441,7 +458,7 @@ namespace QuantConnect.Orders.Fees
             { "MYM", 0.25m }, { "M2K", 0.25m }, { "MES", 0.25m }, { "MNQ", 0.25m }, { "2YY", 0.25m }, { "5YY", 0.25m }, { "10Y", 0.25m },
             { "30Y", 0.25m }, { "MCL", 0.25m }, { "MGC", 0.25m }, { "SIL", 0.25m },
             // Cryptocurrency Future Options
-            { "BTC", 5m }, { "MBT", 1.25m }, { "ETH", 3m }, { "MET", 0.10m },
+            { "BTC", 5m }, { "MBT", 1.25m }, { "ETH", 3m }, { "MET", 0.10m }, { "MIB", 1.25m }, { "MRB", 0.10m }
         };
 
         private static readonly Dictionary<string, decimal> _usaFuturesExchangeFees = new()
@@ -452,7 +469,7 @@ namespace QuantConnect.Orders.Fees
             { "MYM", 0.30m }, { "M2K", 0.30m }, { "MES", 0.30m }, { "MNQ", 0.30m }, { "2YY", 0.30m }, { "5YY", 0.30m }, { "10Y", 0.30m },
             { "30Y", 0.30m }, { "MCL", 0.30m }, { "MGC", 0.30m }, { "SIL", 0.30m },
             // Cryptocurrency Futures
-            { "BTC", 6m }, { "MBT", 2.5m }, { "ETH", 4m }, { "MET", 0.20m },
+            { "BTC", 6m }, { "MBT", 2.5m }, { "ETH", 4m }, { "MET", 0.20m }, { "MIB", 2.5m }, { "MRB", 0.20m },
             // E-mini FX (currencies) Futures
             { "E7", 0.85m }, { "J7", 0.85m },
             // Micro E-mini FX (currencies) Futures
@@ -474,7 +491,7 @@ namespace QuantConnect.Orders.Fees
             { "MYM", 0.20m }, { "M2K", 0.20m }, { "MES", 0.20m }, { "MNQ", 0.20m }, { "2YY", 0.20m }, { "5YY", 0.20m }, { "10Y", 0.20m },
             { "30Y", 0.20m }, { "MCL", 0.20m }, { "MGC", 0.20m }, { "SIL", 0.20m },
             // Cryptocurrency Future Options
-            { "BTC", 5m }, { "MBT", 2.5m }, { "ETH", 4m }, { "MET", 0.20m },
+            { "BTC", 5m }, { "MBT", 2.5m }, { "ETH", 4m }, { "MET", 0.20m }, { "MIB", 2.5m }, { "MRB", 0.20m },
         };
 
         /// <summary>

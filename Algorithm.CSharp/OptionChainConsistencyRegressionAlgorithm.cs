@@ -131,6 +131,16 @@ namespace QuantConnect.Algorithm.CSharp
         public AlgorithmStatus AlgorithmStatus => AlgorithmStatus.Completed;
 
         /// <summary>
+        /// Special arrangement for consistency test - we check if limits work fine
+        /// </summary>
+        public Dictionary<string, string> CustomConfigurations => new()
+        {
+            { "symbol-minute-limit", "100" },
+            { "symbol-second-limit", "100" },
+            { "symbol-tick-limit", "100" }
+        };
+
+        /// <summary>
         /// This is used by the regression test system to indicate what the expected statistics are from running the algorithm
         /// </summary>
         public Dictionary<string, string> ExpectedStatistics => new Dictionary<string, string>
@@ -159,9 +169,10 @@ namespace QuantConnect.Algorithm.CSharp
             {"Treynor Ratio", "0"},
             {"Total Fees", "$2.00"},
             {"Estimated Strategy Capacity", "$5000.00"},
-            {"Lowest Capacity Asset", "GOOCV W6NBKPFL0ACM|GOOCV VP83T1ZUHROL"},
+            {"Lowest Capacity Asset", "GOOCV W6NBKPFL4KO6|GOOCV VP83T1ZUHROL"},
             {"Portfolio Turnover", "9.93%"},
-            {"OrderListHash", "8887ac32d29175b21e40f335437cee61"}
+            {"Drawdown Recovery", "0"},
+            {"OrderListHash", "29e41c0e2a316485a2761c4e56189585"}
         };
     }
 }

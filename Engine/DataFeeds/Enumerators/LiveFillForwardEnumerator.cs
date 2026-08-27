@@ -32,6 +32,12 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators
         private readonly TimeSpan _dataResolution;
         private readonly TimeSpan _underlyingTimeout;
         private readonly ITimeProvider _timeProvider;
+        private readonly bool _extendedMarketHours;
+        private readonly DateTimeZone _dataTimeZone;
+
+        private TimeSpan _marketCloseTimeSpan;
+        private TimeSpan _marketOpenTimeSpan;
+        private DateTime _lastDate;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LiveFillForwardEnumerator"/> class that accepts
@@ -44,17 +50,24 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators
         /// <param name="exchange">The exchange used to determine when to insert fill forward data</param>
         /// <param name="fillForwardResolution">The resolution we'd like to receive data on</param>
         /// <param name="isExtendedMarketHours">True to use the exchange's extended market hours, false to use the regular market hours</param>
+        /// <param name="subscriptionStartTime">The start time of the subscription</param>
         /// <param name="subscriptionEndTime">The end time of the subscription, once passing this date the enumerator will stop</param>
         /// <param name="dataResolution">The source enumerator's data resolution</param>
         /// <param name="dataTimeZone">Time zone of the underlying source data</param>
         /// <param name="dailyStrictEndTimeEnabled">True if daily strict end times are enabled</param>
+        /// <param name="dataType">The configuration data type this enumerator is for</param>
+        /// <param name="lastPointTracker">A reference to the last point emitted before this enumerator is first enumerated</param>
         public LiveFillForwardEnumerator(ITimeProvider timeProvider, IEnumerator<BaseData> enumerator, SecurityExchange exchange, IReadOnlyRef<TimeSpan> fillForwardResolution,
-            bool isExtendedMarketHours, DateTime subscriptionEndTime, Resolution dataResolution, DateTimeZone dataTimeZone, bool dailyStrictEndTimeEnabled)
-            : base(enumerator, exchange, fillForwardResolution, isExtendedMarketHours, subscriptionEndTime, dataResolution.ToTimeSpan(), dataTimeZone, dailyStrictEndTimeEnabled)
+            bool isExtendedMarketHours, DateTime subscriptionStartTime, DateTime subscriptionEndTime, Resolution dataResolution, DateTimeZone dataTimeZone, bool dailyStrictEndTimeEnabled,
+            Type dataType = null, LastPointTracker lastPointTracker = null)
+            : base(enumerator, exchange, fillForwardResolution, isExtendedMarketHours, subscriptionStartTime, subscriptionEndTime, dataResolution.ToTimeSpan(), dataTimeZone,
+                  dailyStrictEndTimeEnabled, dataType, lastPointTracker)
         {
             _timeProvider = timeProvider;
             _dataResolution = dataResolution.ToTimeSpan();
             _underlyingTimeout = GetMaximumDataTimeout(dataResolution);
+            _extendedMarketHours = isExtendedMarketHours;
+            _dataTimeZone = dataTimeZone;
         }
 
         /// <summary>
@@ -70,21 +83,94 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Enumerators
             if (base.RequiresFillForwardData(fillForwardResolution, previous, next, out fillForward))
             {
                 var underlyingTimeout = TimeSpan.Zero;
-                if (fillForwardResolution >= _dataResolution)
+                if (fillForwardResolution >= _dataResolution && ShouldWaitForData(fillForward))
                 {
-                    // we enforece the underlying FF timeout when the FF resolution matches it or is bigger, not the other way round, for example:
+                    // we enforce the underlying FF timeout when the FF resolution matches it or is bigger, not the other way round, for example:
                     // this is a daily enumerator and FF resolution is second, we are expected to emit a bar every second, we can't wait until the timeout each time
                     underlyingTimeout = _underlyingTimeout;
                 }
 
+                var utcNow = _timeProvider.GetUtcNow();
                 var nextEndTimeUtc = (fillForward.EndTime + underlyingTimeout).ConvertToUtc(Exchange.TimeZone);
-                if (next != null || nextEndTimeUtc <= _timeProvider.GetUtcNow())
+                if (next != null || nextEndTimeUtc <= utcNow)
                 {
+                    // a candidate more than one fill forward period behind real time means we are catching up after a time jump,
+                    // for example the warmup to live handover: instead of back filling the whole gap bar by bar, skip to the
+                    // latest expected bar and fill forward from there to now
+                    if ((fillForward.EndTime + fillForwardResolution + underlyingTimeout).ConvertToUtc(Exchange.TimeZone) <= utcNow
+                        && fillForwardResolution <= Time.OneHour)
+                    {
+                        // jump the reference near real time in a single step: the latest expected bar is the single
+                        // trade bar ending at or before now, respecting open hours
+                        var exchangeNow = utcNow.ConvertFromUtc(Exchange.TimeZone);
+                        var targetEndTime = Time.GetStartTimeForTradeBars(Exchange.Hours, exchangeNow, fillForwardResolution, 1,
+                            _extendedMarketHours, _dataTimeZone) + fillForwardResolution;
+                        if (next != null)
+                        {
+                            // when real data is waiting, jump one period short of it so the regular fill forward
+                            // behavior takes over from there
+                            var nextTarget = next.Time.RoundDown(fillForwardResolution) - fillForwardResolution;
+                            if (nextTarget < targetEndTime)
+                            {
+                                targetEndTime = nextTarget;
+                            }
+                        }
+
+                        var jumpEndTime = targetEndTime - fillForwardResolution;
+                        if (jumpEndTime > fillForward.EndTime)
+                        {
+                            var period = fillForward.EndTime - fillForward.Time;
+                            var jumped = fillForward.Clone(fillForward: true);
+                            jumped.Time = jumpEndTime - period;
+                            jumped.EndTime = jumpEndTime;
+                            if (base.RequiresFillForwardData(fillForwardResolution, jumped, next, out var jumpedCandidate)
+                                && jumpedCandidate != null
+                                && (jumpedCandidate.EndTime + underlyingTimeout).ConvertToUtc(Exchange.TimeZone) <= utcNow)
+                            {
+                                fillForward = jumpedCandidate;
+                            }
+                        }
+                    }
+
                     // we FF if next is here but in the future or next has not come yet and we've wait enough time
                     return true;
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// Helper method to determine if we should wait for data before emitting a fill forward bar.
+        /// We only wait for data if the fill forward bar is either in the market open or close time.
+        /// </summary>
+        private bool ShouldWaitForData(BaseData fillForward)
+        {
+            if (fillForward.Symbol.SecurityType != SecurityType.Equity || Exchange.Hours.IsMarketAlwaysOpen)
+            {
+                return false;
+            }
+
+            // Update market open and close daily
+            if (_lastDate != fillForward.EndTime.Date ||
+                // Update market open and close for days with multiple sessions, e.g. early close and then late open
+                fillForward.Time.TimeOfDay > _marketCloseTimeSpan)
+            {
+                _lastDate = fillForward.EndTime.Date;
+                var marketOpen = Exchange.Hours.GetNextMarketOpen(_lastDate, false);
+                var marketClose = Exchange.Hours.GetNextMarketClose(_lastDate, false);
+
+                if (_dataResolution == Time.OneHour || (_dataResolution == Time.OneDay && !UseStrictEndTime))
+                {
+                    marketOpen = marketOpen.RoundDown(_dataResolution);
+                    marketClose = marketClose.RoundUp(_dataResolution);
+                }
+
+                _marketOpenTimeSpan = marketOpen.TimeOfDay;
+                _marketCloseTimeSpan = marketClose.TimeOfDay;
+            }
+
+            // we only wait for data if the fill forward bar is not in the market open or close time
+            return fillForward.Time.TimeOfDay == _marketOpenTimeSpan || fillForward.EndTime.TimeOfDay == _marketCloseTimeSpan;
         }
 
         /// <summary>

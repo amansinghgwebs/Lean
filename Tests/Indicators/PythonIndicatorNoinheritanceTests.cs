@@ -62,6 +62,11 @@ class CustomSimpleMovingAverage():
         self.{(SnakeCase ? "value" : "Value")} = sum(self.queue) / count
         self.{(SnakeCase ? "is_ready" : "IsReady")} = count == self.queue.maxlen
         return self.{(SnakeCase ? "is_ready" : "IsReady")}
+
+    def {(SnakeCase ? "reset" : "Reset")}(self):
+        self.queue.clear()
+        self.{(SnakeCase ? "value" : "Value")} = 0
+        self.{(SnakeCase ? "is_ready" : "IsReady")} = False
 "
                 );
                 var indicator = module.GetAttr("CustomSimpleMovingAverage")
@@ -96,7 +101,7 @@ class CustomSimpleMovingAverage():
                     }
                     if (closeIndex * targetIndex < 0)
                     {
-                        Assert.Fail($"Didn't find one of 'Close' or '{line}' in the header: ", TestColumnName);
+                        Assert.Fail($"Didn't find one of 'Close' or '{TestColumnName}' in the header: {line}");
                     }
 
                     continue;

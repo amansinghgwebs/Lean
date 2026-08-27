@@ -34,8 +34,8 @@ class OptionUniverseFilterGreeksRegressionAlgorithm(QCAlgorithm):
         self._max_gamma = 0.0006
         self._min_vega = 0.01
         self._max_vega = 1.5
-        self._min_theta = -2.0
-        self._max_theta = -0.5
+        self._min_theta = -730.0
+        self._max_theta = -182.5
         self._min_rho = 0.5
         self._max_rho = 3.0
         self._min_iv = 1.0
@@ -53,8 +53,8 @@ class OptionUniverseFilterGreeksRegressionAlgorithm(QCAlgorithm):
         filtered_contracts = len(list(filtered_universe))
 
         if filtered_contracts == total_contracts:
-            raise RegressionTestException(f"Expected filtered universe to have less contracts than original universe. "
-                                          f"Filtered contracts count ({filtered_contracts}) is equal to total contracts count ({total_contracts})")
+            raise AssertionError(f"Expected filtered universe to have less contracts than original universe. "
+                                 f"Filtered contracts count ({filtered_contracts}) is equal to total contracts count ({total_contracts})")
 
         return filtered_universe
 
@@ -88,4 +88,4 @@ class OptionUniverseFilterGreeksRegressionAlgorithm(QCAlgorithm):
 
     def on_end_of_algorithm(self) -> None:
         if not self.option_chain_received:
-            raise RegressionTestException("Option chain was not received.")
+            raise AssertionError("Option chain was not received.")

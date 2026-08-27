@@ -42,7 +42,7 @@ namespace QuantConnect.Algorithm.CSharp
             _optionSymbol = option.Symbol;
 
             // set our strike/expiry filter for this option chain
-            option.SetFilter(u => u.Strikes(-1, +1)
+            option.SetFilter(u => u.StandardsOnly().Strikes(-1, +1)
                                    // Expiration method accepts TimeSpan objects or integer for days.
                                    // The following statements yield the same filtering criteria
                                    .Expiration(0, 60));
@@ -123,6 +123,7 @@ namespace QuantConnect.Algorithm.CSharp
             {"Estimated Strategy Capacity", "$0"},
             {"Lowest Capacity Asset", ""},
             {"Portfolio Turnover", "0%"},
+            {"Drawdown Recovery", "0"},
             {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }

@@ -18,6 +18,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Moq;
+using Moq.Protected;
 using Newtonsoft.Json;
 using NodaTime;
 using NUnit.Framework;
@@ -40,12 +46,32 @@ using QuantConnect.Python;
 using QuantConnect.Scheduling;
 using QuantConnect.Securities;
 using QuantConnect.Tests.Brokerages;
+using QuantConnect.Util;
 
 namespace QuantConnect.Tests.Common.Util
 {
     [TestFixture]
     public class ExtensionsTests
     {
+        [TestCase("00000001", TradeConditionFlags.Regular)]
+        [TestCase("20000021", TradeConditionFlags.Regular, TradeConditionFlags.IntermarketSweep, TradeConditionFlags.TradeThroughExempt)]
+        public void GetEnumValuesInValue(string saleCondition, params TradeConditionFlags[] expected)
+        {
+            var parsed = uint.Parse(saleCondition, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            var enums = Extensions.GetFlags<TradeConditionFlags>(parsed).ToArray();
+            Assert.AreEqual(expected, enums);
+        }
+
+        [TestCase("tt", "", "tt")]
+        [TestCase("tt", "t", "t")]
+        [TestCase("tt", "tt", "")]
+        [TestCase("tt", "asda", "tt")]
+        [TestCase("tt", "1", "tt")]
+        public void RemoveFromEnd(string input, string removal, string expected)
+        {
+            Assert.AreEqual(expected, input.RemoveFromEnd(removal));
+        }
+
         [TestCase("A test", 1)]
         [TestCase("[\"A test\"]", 1)]
         [TestCase("[\"A test\", \"something else\"]", 2)]
@@ -495,7 +521,7 @@ namespace QuantConnect.Tests.Common.Util
         public void SeriesIsNotEmpty()
         {
             var series = new Series("SadSeries")
-                { Values = new List<ISeriesPoint> { new ChartPoint(1, 1) } };
+            { Values = new List<ISeriesPoint> { new ChartPoint(1, 1) } };
 
             Assert.IsFalse(series.IsEmpty());
         }
@@ -516,17 +542,17 @@ namespace QuantConnect.Tests.Common.Util
         public void ChartIsEmptyWithEmptySeries()
         {
             Assert.IsTrue((new Chart("HappyChart")
-                { Series = new Dictionary<string, BaseSeries> { { "SadSeries", new Series("SadSeries") } }}).IsEmpty());
+            { Series = new Dictionary<string, BaseSeries> { { "SadSeries", new Series("SadSeries") } } }).IsEmpty());
         }
 
         [Test]
         public void ChartIsNotEmptyWithNonEmptySeries()
         {
             var series = new Series("SadSeries")
-                { Values = new List<ISeriesPoint> { new ChartPoint(1, 1) } };
+            { Values = new List<ISeriesPoint> { new ChartPoint(1, 1) } };
 
             Assert.IsFalse((new Chart("HappyChart")
-                { Series = new Dictionary<string, BaseSeries> { { "SadSeries", series } } }).IsEmpty());
+            { Series = new Dictionary<string, BaseSeries> { { "SadSeries", series } } }).IsEmpty());
         }
 
         [Test]
@@ -560,7 +586,7 @@ namespace QuantConnect.Tests.Common.Util
         [Test]
         public void GetBetterTypeNameHandlesRecursiveGenericTypes()
         {
-            var type = typeof (Dictionary<List<int>, Dictionary<int, string>>);
+            var type = typeof(Dictionary<List<int>, Dictionary<int, string>>);
             const string expected = "Dictionary<List<Int32>, Dictionary<Int32, String>>";
             var actual = type.GetBetterTypeName();
             Assert.AreEqual(expected, actual);
@@ -1029,7 +1055,7 @@ namespace QuantConnect.Tests.Common.Util
         [Test]
         public void ConvertsDictionaryFromString()
         {
-            var expected = new Dictionary<string, int> {{"a", 1}, {"b", 2}};
+            var expected = new Dictionary<string, int> { { "a", 1 }, { "b", 2 } };
             var input = JsonConvert.SerializeObject(expected);
             var actual = input.ConvertTo<Dictionary<string, int>>();
             CollectionAssert.AreEqual(expected, actual);
@@ -1039,8 +1065,8 @@ namespace QuantConnect.Tests.Common.Util
         public void DictionaryAddsItemToExistsList()
         {
             const int key = 0;
-            var list = new List<int> {1, 2};
-            var dictionary = new Dictionary<int, List<int>> {{key, list}};
+            var list = new List<int> { 1, 2 };
+            var dictionary = new Dictionary<int, List<int>> { { key, list } };
             Extensions.Add(dictionary, key, 3);
             Assert.AreEqual(3, list.Count);
             Assert.AreEqual(3, list[2]);
@@ -1069,7 +1095,7 @@ namespace QuantConnect.Tests.Common.Util
         [Test]
         public void SafeDecimalCastRespectsUpperBound()
         {
-            var input = (double) decimal.MaxValue;
+            var input = (double)decimal.MaxValue;
             var output = input.SafeDecimalCast();
             Assert.AreEqual(decimal.MaxValue, output);
         }
@@ -1077,7 +1103,7 @@ namespace QuantConnect.Tests.Common.Util
         [Test]
         public void SafeDecimalCastRespectsLowerBound()
         {
-            var input = (double) decimal.MinValue;
+            var input = (double)decimal.MinValue;
             var output = input.SafeDecimalCast();
             Assert.AreEqual(decimal.MinValue, output);
         }
@@ -1112,6 +1138,16 @@ namespace QuantConnect.Tests.Common.Util
         {
             var output = input.Normalize();
             Assert.AreEqual(expectedOutput, output.ToStringInvariant());
+        }
+
+        [TestCase(0.072842, "0.072842")]
+        [TestCase(7.5819999, "7.58")]
+        [TestCase(54.1119999, "54.1")]
+        [TestCase(1152280.01234568423, "1152280")]
+        public void SmartRoundingShort(decimal input, string expectedOutput)
+        {
+            var output = input.SmartRoundingShort().ToStringInvariant();
+            Assert.AreEqual(expectedOutput, output);
         }
 
         [Test]
@@ -1332,7 +1368,7 @@ class Test(PythonData):
                 using var locals = new PyDict();
                 PythonEngine.Exec(code, null, locals);
                 var pyObject = locals.GetItem("coarseSelector");
-                pyObject.TryConvertToDelegate(out coarseSelector);
+                pyObject.TryAs(out coarseSelector);
             }
 
             var coarse = Enumerable
@@ -1359,7 +1395,7 @@ class Test(PythonData):
                 using var locals = new PyDict();
                 PythonEngine.Exec("def raise_number(a): raise ValueError(a)", null, locals);
                 var pyObject = locals.GetItem("raise_number");
-                pyObject.TryConvertToDelegate(out action);
+                pyObject.TryAs(out action);
             }
 
             try
@@ -1380,8 +1416,8 @@ class Test(PythonData):
             {
                 var tradebarSelectorPyObject = Field.Volume.ToPython();
                 var quotebatSelectorPyObject = Field.BidClose.ToPython();
-                var tradebarResult = tradebarSelectorPyObject.TryConvertToDelegate<Func<IBaseData, decimal>>(out var tradebarCSharpSelector);
-                var quotebarResult = quotebatSelectorPyObject.TryConvertToDelegate<Func<IBaseData, decimal>>(out var quotebarCSharpSelector);
+                var tradebarResult = tradebarSelectorPyObject.TryAs<Func<IBaseData, decimal>>(out var tradebarCSharpSelector);
+                var quotebarResult = quotebatSelectorPyObject.TryAs<Func<IBaseData, decimal>>(out var quotebarCSharpSelector);
                 Assert.IsTrue(tradebarResult);
                 Assert.IsTrue(quotebarResult);
                 Assert.IsTrue(ReferenceEquals(Field.Volume, tradebarCSharpSelector));
@@ -1399,7 +1435,7 @@ class Test(PythonData):
                 using var locals = new PyDict();
                 PythonEngine.Exec("def raise_number(a, b): raise ValueError(a * b)", null, locals);
                 var pyObject = locals.GetItem("raise_number");
-                pyObject.TryConvertToDelegate(out action);
+                pyObject.TryAs(out action);
             }
 
             try
@@ -1423,7 +1459,7 @@ class Test(PythonData):
                 using var locals = new PyDict();
                 PythonEngine.Exec("def raise_number(a, b): raise ValueError(a * b)", null, locals);
                 var pyObject = locals.GetItem("raise_number");
-                Assert.Throws<ArgumentException>(() => pyObject.TryConvertToDelegate(out action));
+                Assert.IsFalse(pyObject.TryAs(out action));
             }
         }
 
@@ -1610,7 +1646,7 @@ class TestPythonDerivedClass(PythonData):
         [Test]
         public void BatchByDoesNotDropItems()
         {
-            var list = new List<int> {1, 2, 3, 4, 5};
+            var list = new List<int> { 1, 2, 3, 4, 5 };
             var by2 = list.BatchBy(2).ToList();
             Assert.AreEqual(3, by2.Count);
             Assert.AreEqual(2, by2[0].Count);
@@ -1691,7 +1727,7 @@ class TestPythonDerivedClass(PythonData):
         public void DateRulesToFunc()
         {
             var mhdb = MarketHoursDatabase.FromDataFolder();
-            var dateRules = new DateRules(new SecurityManager(
+            var dateRules = new DateRules(null, new SecurityManager(
                 new TimeKeeper(new DateTime(2015, 1, 1), DateTimeZone.Utc)), DateTimeZone.Utc, mhdb);
             var first = new DateTime(2015, 1, 10);
             var second = new DateTime(2015, 1, 30);
@@ -1735,8 +1771,8 @@ class TestPythonDerivedClass(PythonData):
                         SymbolPropertiesDatabase.FromDataFolder(),
                         algo,
                         null,
-                        null
-                    ),
+                        null,
+                        algorithm: algo),
                     new DataPermissionManager(),
                     TestGlobals.DataProvider
                 ),
@@ -1757,7 +1793,7 @@ class TestPythonDerivedClass(PythonData):
                     TestGlobals.DataCacheProvider,
                     TestGlobals.MapFileProvider,
                     TestGlobals.FactorFileProvider,
-                    (_) => {},
+                    (_) => { },
                     false,
                     new DataPermissionManager(),
                     algo.ObjectStore,
@@ -1816,8 +1852,8 @@ class TestPythonDerivedClass(PythonData):
         [Test]
         public void ListEquals()
         {
-            var left = new[] {1, 2, 3};
-            var right = new[] {1, 2, 3};
+            var left = new[] { 1, 2, 3 };
+            var right = new[] { 1, 2, 3 };
             Assert.IsTrue(left.ListEquals(right));
 
             right[2] = 4;
@@ -1827,10 +1863,10 @@ class TestPythonDerivedClass(PythonData):
         [Test]
         public void GetListHashCode()
         {
-            var ints1 = new[] {1, 2, 3};
-            var ints2 = new[] {1, 3, 2};
-            var longs = new[] {1L, 2L, 3L};
-            var decimals = new[] {1m, 2m, 3m};
+            var ints1 = new[] { 1, 2, 3 };
+            var ints2 = new[] { 1, 3, 2 };
+            var longs = new[] { 1L, 2L, 3L };
+            var decimals = new[] { 1m, 2m, 3m };
 
             // ordering dependent
             Assert.AreNotEqual(ints1.GetListHashCode(), ints2.GetListHashCode());
@@ -1843,7 +1879,7 @@ class TestPythonDerivedClass(PythonData):
             Assert.AreEqual(ints1.GetListHashCode(), longs.GetListHashCode());
 
             // deterministic
-            Assert.AreEqual(ints1.GetListHashCode(), new[] {1, 2, 3}.GetListHashCode());
+            Assert.AreEqual(ints1.GetListHashCode(), new[] { 1, 2, 3 }.GetListHashCode());
         }
 
         [Test]
@@ -1898,7 +1934,7 @@ def select_symbol(fundamental):
 "
                 );
                 var selectSymbolPythonMethod = module.GetAttr("select_symbol");
-                Assert.IsTrue(selectSymbolPythonMethod.TryConvertToDelegate(out Func<IEnumerable<Fundamental>, object> selectSymbols));
+                Assert.IsTrue(selectSymbolPythonMethod.TryAs(out Func<IEnumerable<Fundamental>, object> selectSymbols));
                 Assert.IsNotNull(selectSymbols);
 
                 var selectSymbolsUniverseDelegate = selectSymbols.ConvertToUniverseSelectionSymbolDelegate();
@@ -1969,7 +2005,7 @@ def select_symbol(fundamental):
         }
 
         [TestCase(Futures.Indices.SP500EMini, "2023/11/16", 1)]
-        [TestCase(Futures.Metals.Gold,"2023/11/16", 0, Description = "The startDateTime is not mapped")]
+        [TestCase(Futures.Metals.Gold, "2023/11/16", 0, Description = "The startDateTime is not mapped")]
         public void GetHistoricalFutureSymbolNamesByDateRequest(string ticker, DateTime expiryTickerDate, int expectedAmount)
         {
             var futureSymbol = Symbols.CreateFutureSymbol(ticker, expiryTickerDate);
@@ -1981,7 +2017,7 @@ def select_symbol(fundamental):
         }
 
         [TestCaseSource(nameof(GetPythonPropertyOfACustomIndicatorWorksTestCases))]
-        public void GetPythonPropertyOfACustomIndicatorWorks(string stringModule,string propertyName, bool implementsProperty, bool expectedPropertyValue)
+        public void GetPythonPropertyOfACustomIndicatorWorks(string stringModule, string propertyName, bool implementsProperty, bool expectedPropertyValue)
         {
             using (Py.GIL())
             {
@@ -2058,6 +2094,184 @@ def select_symbol(fundamental):
             var csvLine = "2,1.234";
             Assert.IsTrue(csvLine.TryGetDecimalFromCsv(index, out var result));
             Assert.AreEqual(expectedValue, result);
+        }
+
+        [Test]
+        public void GetsEnumStringInPython([Values] bool useIntValue)
+        {
+            using (Py.GIL())
+            {
+                var module = PyModule.FromString(
+                    "GetsEnumStringInPython",
+                    @"
+from AlgorithmImports import *
+
+def get_enum_string(value):
+    return Extensions.get_enum_string(value, Resolution)
+"
+                );
+
+                using var getEnumString = module.GetAttr("get_enum_string");
+                var enumValue = Resolution.Minute;
+                using var pyEnumValue = useIntValue ? Convert.ToInt64(enumValue).ToPython() : enumValue.ToPython();
+                var enumString = getEnumString.Invoke(pyEnumValue).As<string>();
+
+                Assert.AreEqual(nameof(Resolution.Minute), enumString);
+            }
+        }
+
+        private class TestDto
+        {
+            public string Name { get; set; }
+            public DateTime Date { get; set; }
+            public decimal Amount { get; set; }
+        }
+
+        [Test]
+        public void JsonStreamSerializationRoundTrip()
+        {
+            var original = new TestDto()
+            {
+                Name = "Test",
+                Date = new DateTime(2024, 1, 1),
+                Amount = 123.45m
+            };
+
+            using var stream = new MemoryStream();
+            original.SerializeJsonToStream(stream);
+
+            stream.Seek(0, SeekOrigin.Begin);
+            var deserialized = stream.DeserializeJson<TestDto>();
+
+            Assert.AreEqual(original.Name, deserialized.Name);
+            Assert.AreEqual(original.Date, deserialized.Date);
+            Assert.AreEqual(original.Amount, deserialized.Amount);
+        }
+
+        [Test]
+        public void JsonStringSerializationRoundTrip()
+        {
+            var original = new TestDto()
+            {
+                Name = "Test",
+                Date = new DateTime(2024, 1, 1),
+                Amount = 123.45m
+            };
+
+            var jsonString = original.SerializeJsonToString();
+            var deserialized = jsonString.DeserializeJson<TestDto>();
+
+            Assert.AreEqual(original.Name, deserialized.Name);
+            Assert.AreEqual(original.Date, deserialized.Date);
+            Assert.AreEqual(original.Amount, deserialized.Amount);
+        }
+
+        [Test]
+        public void TryDownloadDataDeserializesToCorrectType()
+        {
+            var json = "{\"Open\": 10.5, \"High\": 12.0, \"Low\": 9.5, \"Close\": 11.0}";
+            using var client = MockClient(json, HttpStatusCode.OK);
+
+            bool success = client.TryDownloadData<Bar>("http://test.com", out var bar, out _);
+
+            Assert.IsTrue(success);
+            Assert.AreEqual(10.5m, bar.Open);
+            Assert.AreEqual(12.0m, bar.High);
+            Assert.AreEqual(9.5m, bar.Low);
+            Assert.AreEqual(11.0m, bar.Close);
+        }
+
+        [TestCase("{\"Sucess\": true}")]
+        [TestCase("Plain text response")]
+        public void TryDownloadDataReturnsRawResponseWhenTypeIsString(string json)
+        {
+            using var client = MockClient(json, HttpStatusCode.OK);
+
+            bool success1 = client.TryDownloadData<string>("http://test.com", out var result1, out _);
+            bool success2 = client.TryDownloadData("http://test.com", out var result2, out _);
+
+            Assert.IsTrue(success1 && success2);
+            Assert.AreEqual(json, result1);
+            Assert.AreEqual(json, result2);
+        }
+
+        [Test]
+        public void TryDownloadDataHandlesNetworkError()
+        {
+            var handlerMock = new Mock<HttpMessageHandler>();
+            handlerMock
+               .Protected()
+               .Setup<Task<HttpResponseMessage>>(
+                  "SendAsync",
+                  ItExpr.IsAny<HttpRequestMessage>(),
+                  ItExpr.IsAny<CancellationToken>())
+               .ThrowsAsync(new HttpRequestException("Network connection failed!"));
+
+            using var client = new HttpClient(handlerMock.Object);
+
+            bool success = client.TryDownloadData<Bar>("http://test.com", out var result, out var statusCode);
+
+            Assert.IsFalse(success);
+            Assert.IsNull(result);
+            Assert.IsNull(statusCode);
+        }
+
+        private static HttpClient MockClient(string content, HttpStatusCode code)
+        {
+            var handlerMock = new Mock<HttpMessageHandler>();
+
+            handlerMock
+               .Protected()
+               .Setup<Task<HttpResponseMessage>>(
+                  "SendAsync",
+                  ItExpr.IsAny<HttpRequestMessage>(),
+                  ItExpr.IsAny<CancellationToken>())
+               .Returns(() => Task.FromResult(new HttpResponseMessage
+               {
+                   StatusCode = code,
+                   Content = new StringContent(content),
+               }));
+
+            return new HttpClient(handlerMock.Object);
+        }
+
+        private static TestCaseData[] MirrorOptionTestCases
+        {
+            get
+            {
+                var spy = Symbol.Create("SPY", SecurityType.Equity, Market.USA);
+                var spx = Symbol.Create("SPX", SecurityType.Index, Market.USA);
+
+                var strike = 100m;
+                var expiry = new DateTime(2021, 1, 1);
+
+                var spyCall = Symbol.CreateOption(spy, Market.USA, OptionStyle.American, OptionRight.Call, strike, expiry);
+                var spyPut = Symbol.CreateOption(spy, Market.USA, OptionStyle.American, OptionRight.Put, strike, expiry);
+
+                var spxCall = Symbol.CreateOption(spx, Market.USA, OptionStyle.European, OptionRight.Call, strike, expiry);
+                var spxPut = Symbol.CreateOption(spx, Market.USA, OptionStyle.European, OptionRight.Put, strike, expiry);
+
+                var spxwCall = Symbol.CreateOption(spx, "SPXW", Market.USA, OptionStyle.European, OptionRight.Call, strike, expiry);
+                var spxwPut = Symbol.CreateOption(spx, "SPXW", Market.USA, OptionStyle.European, OptionRight.Put, strike, expiry);
+
+                return new[]
+                {
+                    new TestCaseData(spyCall).Returns(spyPut),
+                    new TestCaseData(spyPut).Returns(spyCall),
+
+                    new TestCaseData(spxCall).Returns(spxPut),
+                    new TestCaseData(spxPut).Returns(spxCall),
+
+                    new TestCaseData(spxwCall).Returns(spxwPut),
+                    new TestCaseData(spxwPut).Returns(spxwCall),
+                };
+            }
+        }
+
+        [TestCaseSource(nameof(MirrorOptionTestCases))]
+        public Symbol GetsCorrectMirrorOption(Symbol optionSymbol)
+        {
+            return optionSymbol.GetMirrorOptionSymbol();
         }
 
         private PyObject ConvertToPyObject(object value)

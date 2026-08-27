@@ -82,11 +82,11 @@ namespace QuantConnect
         private bool MonitorTask(Task task,
             TimeSpan timeSpan,
             Func<IsolatorLimitResult> withinCustomLimits,
-            long memoryCap = 1024,
-            int sleepIntervalMillis = 1000)
+            long memoryCap,
+            int sleepIntervalMillis)
         {
             // default to always within custom limits
-            withinCustomLimits = withinCustomLimits ?? (() => new IsolatorLimitResult(TimeSpan.Zero, string.Empty));
+            withinCustomLimits ??= () => new IsolatorLimitResult(TimeSpan.Zero, string.Empty);
 
             var message = string.Empty;
             var emaPeriod = 60d;
@@ -100,10 +100,16 @@ namespace QuantConnect
             memoryCap *= 1024 * 1024;
             var spikeLimit = memoryCap*2;
 
+            if (memoryCap <= 0)
+            {
+                memoryCap = long.MaxValue;
+                spikeLimit = long.MaxValue;
+            }
+
             while (!task.IsCompleted && !CancellationTokenSource.IsCancellationRequested && utcNow < end)
             {
                 // if over 80% allocation force GC then sample
-                var sample = Convert.ToDouble(GC.GetTotalMemory(memoryUsed > memoryCap * 0.8));
+                var sample = Convert.ToDouble(GC.GetTotalMemory(forceFullCollection: false));
 
                 // find the EMA of the memory used to prevent spikes killing stategy
                 memoryUsed = Convert.ToInt64((emaPeriod-1)/emaPeriod * memoryUsed + (1/emaPeriod)*sample);

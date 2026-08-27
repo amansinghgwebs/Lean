@@ -42,7 +42,7 @@ namespace QuantConnect.Algorithm.CSharp
             _aapl = AddEquity("AAPL", Resolution.Minute, extendedMarketHours: true, dataNormalizationMode: DataNormalizationMode.Raw).Symbol;
 
             var option = AddOption(_aapl, Resolution.Minute);
-            option.SetFilter(-1, +1, 0, 365);
+            option.SetFilter(u => u.StandardsOnly().Strikes(-1, +1).Expiration(0, 365));
         }
 
         public override void OnData(Slice slice)
@@ -137,6 +137,7 @@ namespace QuantConnect.Algorithm.CSharp
             {"Estimated Strategy Capacity", "$0"},
             {"Lowest Capacity Asset", ""},
             {"Portfolio Turnover", "0%"},
+            {"Drawdown Recovery", "0"},
             {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }

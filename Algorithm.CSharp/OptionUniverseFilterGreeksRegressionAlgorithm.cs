@@ -62,8 +62,8 @@ namespace QuantConnect.Algorithm.CSharp
             MaxGamma = 0.0006m;
             MinVega = 0.01m;
             MaxVega = 1.5m;
-            MinTheta = -2.0m;
-            MaxTheta = -0.5m;
+            MinTheta = -730m;
+            MaxTheta = -182.5m;
             MinRho = 0.5m;
             MaxRho = 3.0m;
             MinIv = 1.0m;
@@ -186,6 +186,7 @@ namespace QuantConnect.Algorithm.CSharp
             {"Estimated Strategy Capacity", "$0"},
             {"Lowest Capacity Asset", ""},
             {"Portfolio Turnover", "0%"},
+            {"Drawdown Recovery", "0"},
             {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }

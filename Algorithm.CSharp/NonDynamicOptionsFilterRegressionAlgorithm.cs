@@ -44,7 +44,7 @@ namespace QuantConnect.Algorithm.CSharp
             var option = AddOption(UnderlyingTicker);
             _optionSymbol = option.Symbol;
 
-            option.SetFilter(u => u.Strikes(-2, +2).Expiration(0, 180 * 3));
+            option.SetFilter(u => u.StandardsOnly().Strikes(-2, +2).Expiration(0, 180 * 3));
 
             SetBenchmark(equity.Symbol);
         }
@@ -162,6 +162,7 @@ namespace QuantConnect.Algorithm.CSharp
             {"Estimated Strategy Capacity", "$0"},
             {"Lowest Capacity Asset", ""},
             {"Portfolio Turnover", "0%"},
+            {"Drawdown Recovery", "0"},
             {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }

@@ -14,11 +14,10 @@
  *
 */
 
-using System;
 using QuantConnect.Orders;
 using QuantConnect.Statistics;
+using System;
 using System.Collections.Generic;
-using QuantConnect.Securities.Positions;
 
 namespace QuantConnect.Packets
 {
@@ -33,10 +32,6 @@ namespace QuantConnect.Packets
         public Dictionary<string, AlgorithmPerformance> RollingWindow { get; set; }
 
         /// <summary>
-        /// Rolling window detailed statistics.
-        /// </summary>
-        public AlgorithmPerformance TotalPerformance { get; set; }
-        /// <summary>
         /// Creates a new instance
         /// </summary>
         public BacktestResultParameters(IDictionary<string, Chart> charts,
@@ -48,11 +43,13 @@ namespace QuantConnect.Packets
             List<OrderEvent> orderEvents,
             AlgorithmPerformance totalPerformance = null,
             AlgorithmConfiguration algorithmConfiguration = null,
-            IDictionary<string, string> state = null)
-            : base(charts, orders, profitLoss, statistics, runtimeStatistics, orderEvents, algorithmConfiguration, state)
+            IDictionary<string, string> state = null,
+            IReadOnlyList<Analysis> analysisResult = null,
+            IDictionary<string, string> serverStatistics = null)
+            : base(charts, orders, profitLoss, statistics, runtimeStatistics, orderEvents, totalPerformance, algorithmConfiguration, state, analysisResult,
+                serverStatistics)
         {
             RollingWindow = rollingWindow;
-            TotalPerformance = totalPerformance;
         }
     }
 }

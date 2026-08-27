@@ -42,7 +42,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 return universeFilter.IncludeWeeklys().Strikes(-2, +2).Expiration(0, 10);
             });
-            option.PriceModel = OptionPriceModels.BaroneAdesiWhaley();
+            option.PriceModel = OptionPriceModels.BlackScholes();
             _optionSymbol = option.Symbol;
 
             SetWarmUp(TimeSpan.FromDays(3));
@@ -150,6 +150,7 @@ namespace QuantConnect.Algorithm.CSharp
             {"Estimated Strategy Capacity", "$0"},
             {"Lowest Capacity Asset", ""},
             {"Portfolio Turnover", "0%"},
+            {"Drawdown Recovery", "0"},
             {"OrderListHash", "d41d8cd98f00b204e9800998ecf8427e"}
         };
     }

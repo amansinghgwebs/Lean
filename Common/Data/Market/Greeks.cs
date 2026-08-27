@@ -13,12 +13,15 @@
  * limitations under the License.
 */
 
+using System;
+using QuantConnect.Python;
+
 namespace QuantConnect.Data.Market
 {
     /// <summary>
     /// Defines the greeks
     /// </summary>
-    public abstract class Greeks
+    public class Greeks
     {
         /// <summary>
         /// Gets the delta.
@@ -27,7 +30,7 @@ namespace QuantConnect.Data.Market
         /// the underlying asset'sprice. (∂V/∂S)
         /// </para>
         /// </summary>
-        public abstract decimal Delta { get; }
+        public virtual decimal Delta { get; set; }
 
         /// <summary>
         /// Gets the gamma.
@@ -36,7 +39,7 @@ namespace QuantConnect.Data.Market
         /// the underlying asset'sprice. (∂²V/∂S²)
         /// </para>
         /// </summary>
-        public abstract decimal Gamma { get; }
+        public virtual decimal Gamma { get; set; }
 
         /// <summary>
         /// Gets the vega.
@@ -45,7 +48,7 @@ namespace QuantConnect.Data.Market
         /// the underlying's volatility. (∂V/∂σ)
         /// </para>
         /// </summary>
-        public abstract decimal Vega { get; }
+        public virtual decimal Vega { get; set; }
 
         /// <summary>
         /// Gets the theta.
@@ -54,7 +57,7 @@ namespace QuantConnect.Data.Market
         /// time. This is commonly known as the 'time decay.' (∂V/∂τ)
         /// </para>
         /// </summary>
-        public abstract decimal Theta { get; }
+        public virtual decimal Theta { get; set; }
 
         /// <summary>
         /// Gets the rho.
@@ -63,7 +66,7 @@ namespace QuantConnect.Data.Market
         /// the risk free interest rate. (∂V/∂r)
         /// </para>
         /// </summary>
-        public abstract decimal Rho { get; }
+        public virtual decimal Rho { get; set; }
 
         /// <summary>
         /// Gets the lambda.
@@ -73,7 +76,8 @@ namespace QuantConnect.Data.Market
         /// (∂V/∂S ✕ S/V)
         /// </para>
         /// </summary>
-        public abstract decimal Lambda { get; }
+        [PandasIgnore]
+        public virtual decimal Lambda { get; set; }
 
         /// <summary>
         /// Gets the lambda.
@@ -87,7 +91,12 @@ namespace QuantConnect.Data.Market
         /// Alias for <see cref="Lambda"/> required for compatibility with Python when
         /// PEP8 API is used (lambda is a reserved keyword in Python).
         /// </remarks>
-        public virtual decimal Lambda_ => Lambda;
+        [PandasIgnore]
+        public virtual decimal Lambda_
+        {
+            get { return Lambda; }
+            set { Lambda = value; }
+        }
 
         /// <summary>
         /// Gets the theta per day.
@@ -96,6 +105,49 @@ namespace QuantConnect.Data.Market
         /// time. This is commonly known as the 'time decay.' (∂V/∂τ)
         /// </para>
         /// </summary>
-        public virtual decimal ThetaPerDay => Theta / 365m;
+        [PandasIgnore]
+        public virtual decimal ThetaPerDay
+        {
+            get { return Theta / 365m; }
+            set { Theta = value * 365m; }
+        }
+
+        /// <summary>
+        /// Calculates the annualized theta value based on a daily theta input.
+        /// </summary>
+        /// <param name="thetaPerDay">The theta value per day to be annualized.</param>
+        /// <returns>The annualized theta value, calculated as the daily theta multiplied by 365. Returns decimal.MaxValue or
+        /// decimal.MinValue if the result overflows.</returns>
+        public static decimal GetSafeTheta(decimal thetaPerDay)
+        {
+            try
+            {
+                return thetaPerDay * 365m;
+            }
+            catch (OverflowException)
+            {
+                return thetaPerDay < 0 ? decimal.MinValue : decimal.MaxValue;
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Greeks"/> class.
+        /// </summary>
+        public Greeks()
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Greeks"/> class with specified values.
+        /// </summary>
+        public Greeks(decimal delta, decimal gamma, decimal vega, decimal theta, decimal rho, decimal lambda)
+        {
+            Delta = delta;
+            Gamma = gamma;
+            Vega = vega;
+            Theta = theta;
+            Rho = rho;
+            Lambda = lambda;
+        }
     }
 }

@@ -74,8 +74,15 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// </summary>
         protected override FutureFilterUniverse Filter(FutureFilterUniverse filter)
         {
+            // Check if this method was overridden in Python
+            if (TryInvokePythonOverride(nameof(Filter), out FutureFilterUniverse result, filter))
+            {
+                return result;
+            }
+
             // Remove duplicated keys
-            return filter.Contracts(FilterByOpenInterest(filter.DistinctBy(x => x).ToDictionary(x => x, x => _marketHoursDatabase.GetEntry(x.ID.Market, x, x.ID.SecurityType))));
+            return filter.Contracts(FilterByOpenInterest(
+                filter.DistinctBy(x => x).ToDictionary(x => x.Symbol, x => _marketHoursDatabase.GetEntry(x.ID.Market, x, x.ID.SecurityType))));
         }
 
         /// <summary>
@@ -143,7 +150,7 @@ namespace QuantConnect.Algorithm.Framework.Selection
         /// <exception cref="ArgumentException"></exception>
         private static Func<DateTime, IEnumerable<Symbol>> ConvertFutureChainSymbolSelectorToFunc(PyObject futureChainSymbolSelector)
         {
-            if (futureChainSymbolSelector.TryConvertToDelegate(out Func<DateTime, IEnumerable<Symbol>> futureSelector))
+            if (futureChainSymbolSelector.TrySafeAs(out Func<DateTime, IEnumerable<Symbol>> futureSelector))
             {
                 return futureSelector;
             }

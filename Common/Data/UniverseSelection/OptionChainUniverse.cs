@@ -20,6 +20,7 @@ using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using System.Collections.Generic;
 using QuantConnect.Securities.Option;
+using QuantConnect.Util;
 
 namespace QuantConnect.Data.UniverseSelection
 {
@@ -31,7 +32,6 @@ namespace QuantConnect.Data.UniverseSelection
         private readonly OptionFilterUniverse _optionFilterUniverse;
         // as an array to make it easy to prepend to selected symbols
         private readonly Symbol[] _underlyingSymbol;
-        private DateTime _cacheDate;
 
         /// <summary>
         /// True if this universe filter can run async in the data stack
@@ -91,30 +91,9 @@ namespace QuantConnect.Data.UniverseSelection
         /// <returns>The data that passes the filter</returns>
         public override IEnumerable<Symbol> SelectSymbols(DateTime utcTime, BaseDataCollection data)
         {
-            // date change detection needs to be done in exchange time zone
             var localEndTime = utcTime.ConvertFromUtc(Option.Exchange.TimeZone);
-            var exchangeDate = localEndTime.Date;
-            if (data.Symbol.SecurityType == SecurityType.FutureOption)
-            {
-                if (_cacheDate == exchangeDate)
-                {
-                    return Unchanged;
-                }
-                _cacheDate = exchangeDate;
-            }
-
-            // Temporary: this can be removed when future options universe selection is also file-based
-            var availableContractsData = data.Symbol.SecurityType != SecurityType.FutureOption
-                ? data.Data.Cast<OptionUniverse>()
-                : data.Data.Select(x => new OptionUniverse()
-                {
-                    Symbol = x.Symbol,
-                    Underlying = data.Underlying,
-                    Time = x.Time
-                });
-
             // we will only update unique strikes when there is an exchange date change
-            _optionFilterUniverse.Refresh(availableContractsData, data.Underlying, localEndTime);
+            _optionFilterUniverse.Refresh(new CastingEnumerable<BaseData, OptionUniverse>(data.Data), data.Underlying, localEndTime);
 
             var results = Option.ContractFilter.Filter(_optionFilterUniverse);
 
